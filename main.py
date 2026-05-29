@@ -29,7 +29,7 @@ import urllib.parse
 from html import escape as esc
 
 from PyQt6.QtCore import (
-    Qt, QUrl, QPoint, QRectF, QEvent, QTimer, QThread,
+    Qt, QUrl, QPoint, QRectF, QEvent, QTimer, QThread, QObject,
     QPropertyAnimation, QVariantAnimation, QEasingCurve, pyqtSignal,
 )
 from PyQt6.QtGui import (
@@ -40,13 +40,14 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QLabel, QStackedWidget, QTabBar, QProgressBar,
     QSizeGrip, QFileDialog, QMessageBox, QMenu, QSplitter, QTextBrowser,
+    QGraphicsDropShadowEffect,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import (
     QWebEngineProfile, QWebEnginePage, QWebEngineSettings,
     QWebEngineScript, QWebEngineUrlRequestInterceptor, QWebEngineDownloadRequest,
 )
-from PyQt6.QtNetwork import QNetworkProxy
+from PyQt6.QtNetwork import QNetworkProxy, QLocalServer, QLocalSocket
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -113,99 +114,78 @@ def apply_native_dark_titlebar(hwnd: int):
         pass
 
 
+class DragBar(QWidget):
+    """Полоска заголовка: тащим окно за пустую зону, двойной клик = развернуть/восстановить.
+    Клики по дочерним (вкладки/кнопки) они забирают сами — сюда доходит только пустое место."""
+
+    def __init__(self, win):
+        super().__init__()
+        self.win = win
+        self._press = None
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self._press = e.globalPosition().toPoint() - self.win.frameGeometry().topLeft()
+            e.accept()
+
+    def mouseMoveEvent(self, e):
+        if self._press is not None and (e.buttons() & Qt.MouseButton.LeftButton):
+            if self.win.is_maxed():
+                return
+            self.win.move(e.globalPosition().toPoint() - self._press)
+            e.accept()
+
+    def mouseReleaseEvent(self, e):
+        self._press = None
+
+    def mouseDoubleClickEvent(self, e):
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.win.toggle_max_restore()
+
+
 class FramelessWindow(QMainWindow):
-    """QMainWindow с кастомным заголовком в стиле Chrome, но нативным поведением окна."""
+    """Стабильное frameless-окно БЕЗ хрупкого Win32: ручное перетаскивание за титул,
+    разворачивание в рабочую область (не накрывая панель задач), скруглённые углы."""
 
     def __init__(self):
         super().__init__()
-        self._native_done = False
         self._titlestrip = None
-        self._drag_widgets = ()
-        if IS_WIN:
-            self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        self._normal_geom = None
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
 
-    def set_caption(self, strip, draggable):
+    def set_caption(self, strip, draggable=()):
         self._titlestrip = strip
-        self._drag_widgets = tuple(draggable)
 
-    def showEvent(self, e):
-        super().showEvent(e)
-        if IS_WIN and not self._native_done:
-            self._native_done = True
-            self._setup_native_frame()
+    def is_maxed(self):
+        return self._normal_geom is not None
 
-    def _setup_native_frame(self):
-        try:
-            hwnd = int(self.winId())
-            style = _user32.GetWindowLongPtrW(hwnd, GWL_STYLE)
-            _user32.SetWindowLongPtrW(hwnd, GWL_STYLE,
-                style | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU)
-            _dwmapi.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(MARGINS(0, 0, 1, 0)))
-            apply_native_dark_titlebar(hwnd)
-            # SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER
-            _user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004)
-        except Exception:
-            pass
+    def toggle_max_restore(self):
+        if self.is_maxed():
+            g, self._normal_geom = self._normal_geom, None
+            if g is not None:
+                self.setGeometry(g)
+        else:
+            self._normal_geom = self.geometry()
+            scr = self.screen() or QApplication.primaryScreen()
+            if scr is not None:
+                self.setGeometry(scr.availableGeometry())
+        self.apply_rounded_mask()
+        if hasattr(self, "btn_max"):
+            self.btn_max.setText(GLYPH_RESTORE if self.is_maxed() else GLYPH_MAX)
+            self.btn_max.setToolTip("Восстановить" if self.is_maxed() else "Развернуть")
 
-    def nativeEvent(self, eventType, message):
-        if IS_WIN:
-            try:
-                et = bytes(eventType)
-            except Exception:
-                et = eventType
-            if et == b"windows_generic_MSG":
-                try:
-                    msg = wintypes.MSG.from_address(int(message))
-                except Exception:
-                    return super().nativeEvent(eventType, message)
-                if msg.message == WM_NCCALCSIZE:
-                    if msg.wParam and self.isMaximized():
-                        p = ctypes.cast(msg.lParam, ctypes.POINTER(NCCALCSIZE_PARAMS)).contents
-                        cx = _user32.GetSystemMetrics(SM_CXSIZEFRAME) + _user32.GetSystemMetrics(SM_CXPADDEDBORDER)
-                        cy = _user32.GetSystemMetrics(SM_CYSIZEFRAME) + _user32.GetSystemMetrics(SM_CXPADDEDBORDER)
-                        p.rgrc[0].left += cx
-                        p.rgrc[0].right -= cx
-                        p.rgrc[0].top += cy
-                        p.rgrc[0].bottom -= cy
-                    return True, 0          # клиентская область = всё окно (заголовок убран)
-                if msg.message == WM_NCHITTEST:
-                    return True, self._hit_test(msg.lParam)
-        return super().nativeEvent(eventType, message)
+    def apply_rounded_mask(self):
+        from PyQt6.QtGui import QPainterPath, QRegion
+        if self.is_maxed() or self.isFullScreen():
+            self.clearMask()
+            return
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, float(self.width()), float(self.height())), 12, 12)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
-    def _hit_test(self, lparam):
-        x = ctypes.c_short(lparam & 0xFFFF).value
-        y = ctypes.c_short((lparam >> 16) & 0xFFFF).value
-        rect = wintypes.RECT()
-        _user32.GetWindowRect(int(self.winId()), ctypes.byref(rect))
-        bw = 8
-        left = x < rect.left + bw
-        right = x >= rect.right - bw
-        top = y < rect.top + bw
-        bottom = y >= rect.bottom - bw
-        if not (self.isMaximized() or self.isFullScreen()):
-            if top and left:
-                return HTTOPLEFT
-            if top and right:
-                return HTTOPRIGHT
-            if bottom and left:
-                return HTBOTTOMLEFT
-            if bottom and right:
-                return HTBOTTOMRIGHT
-            if left:
-                return HTLEFT
-            if right:
-                return HTRIGHT
-            if top:
-                return HTTOP
-            if bottom:
-                return HTBOTTOM
-        if self._titlestrip is not None:
-            local = self.mapFromGlobal(QPoint(x, y))
-            if 0 <= local.y() < self._titlestrip.height():
-                child = self.childAt(local)
-                if child is None or child in self._drag_widgets:
-                    return HTCAPTION
-        return HTCLIENT
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self.apply_rounded_mask()
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -318,6 +298,41 @@ class OmniBox(QLineEdit):
     def focusInEvent(self, e):
         super().focusInEvent(e)
         QTimer.singleShot(0, self.selectAll)
+
+
+class HoverGlow(QObject):
+    """Плавное свечение-ореол вокруг кнопки при наведении (анимация blurRadius)."""
+
+    def __init__(self, widget, color="#89B4FA", strength=22):
+        super().__init__(widget)
+        self.strength = strength
+        eff = QGraphicsDropShadowEffect(widget)
+        eff.setOffset(0, 0)
+        eff.setBlurRadius(0)
+        eff.setColor(QColor(color))
+        widget.setGraphicsEffect(eff)
+        self.anim = QPropertyAnimation(eff, b"blurRadius", self)
+        self.anim.setDuration(180)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        widget.installEventFilter(self)
+
+    def eventFilter(self, obj, e):
+        t = e.type()
+        if t == QEvent.Type.Enter:
+            self._to(self.strength)
+        elif t == QEvent.Type.Leave:
+            self._to(0)
+        return False
+
+    def _to(self, value):
+        self.anim.stop()
+        self.anim.setEndValue(float(value))
+        self.anim.start()
+
+
+def attach_glow(widget, color="#89B4FA"):
+    HoverGlow(widget, color)
+    return widget
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -602,7 +617,7 @@ class Browser(FramelessWindow):
         root.setSpacing(0)
 
         # ── РЯД 0: ВКЛАДКИ В ЗАГОЛОВКЕ (Chrome-style) + кнопки окна ──
-        self.titlestrip = QWidget()
+        self.titlestrip = DragBar(self)
         self.titlestrip.setObjectName("TitleStrip")
         self.titlestrip.setFixedHeight(40)
         ts = QHBoxLayout(self.titlestrip)
@@ -636,7 +651,7 @@ class Browser(FramelessWindow):
 
         for obj, glyph, slot, tip in (
                 ("WinMin", GLYPH_MIN, self.showMinimized, "Свернуть"),
-                ("WinMax", GLYPH_MAX, self._toggle_max, "Развернуть"),
+                ("WinMax", GLYPH_MAX, self.toggle_max_restore, "Развернуть"),
                 ("WinClose", GLYPH_CLOSE, self.close, "Закрыть")):
             b = QPushButton(glyph)
             b.setObjectName(obj)
@@ -677,6 +692,7 @@ class Browser(FramelessWindow):
         self.ghost_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.ghost_btn.setToolTip("Tor SOCKS5 + спуфинг UA + инкогнито-профиль")
         self.ghost_btn.toggled.connect(self.toggle_ghost)
+        HoverGlow(self.ghost_btn, "#A6E3A1")
         tl.addWidget(self.ghost_btn)
         tl.addWidget(self._mk_btn("🚀", "AntiBtn", self.antigravity, "Antigravity"))
         tl.addWidget(self._mk_btn("⋮", "NavBtn", self.open_menu, "Меню"))
@@ -741,6 +757,8 @@ class Browser(FramelessWindow):
         if tip:
             b.setToolTip(tip)
         b.clicked.connect(slot)
+        glow = "#CBA6F7" if obj == "AntiBtn" else "#89B4FA"
+        HoverGlow(b, glow)            # плавное свечение при наведении
         return b
 
     def _build_shortcuts(self):
@@ -1042,13 +1060,32 @@ class Browser(FramelessWindow):
     def toggle_ai(self, show=None):
         if show is None:
             show = not self.ai_panel.isVisible()
-        self.ai_panel.setVisible(show)
         self.ai_btn.setProperty("active", "true" if show else "")
         self.ai_btn.style().unpolish(self.ai_btn)
         self.ai_btn.style().polish(self.ai_btn)
+
+        target = 380 if show else 0
+        total = max(self.splitter.width(), 800)
+        start_w = self.ai_panel.width() if self.ai_panel.isVisible() else 0
         if show:
-            self.splitter.setSizes([max(640, self.width() - 400), 400])
+            self.ai_panel.setMaximumWidth(560)
+            self.ai_panel.show()
             self.ai_panel.inp.setFocus()
+
+        anim = QVariantAnimation(self)
+        anim.setDuration(240)
+        anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        anim.setStartValue(float(start_w))
+        anim.setEndValue(float(target))
+        anim.valueChanged.connect(
+            lambda v: self.splitter.setSizes([max(300, total - int(v)), int(v)]))
+
+        def fin():
+            if not show:
+                self.ai_panel.hide()
+        anim.finished.connect(fin)
+        self._ai_anim = anim          # держим ссылку
+        anim.start()
 
     # ── GHOST MODE ───────────────────────────────────────────────────────
     def toggle_ghost(self, on: bool):
@@ -1158,18 +1195,10 @@ class Browser(FramelessWindow):
         self._levitation = anim
         anim.start()
 
-    # ── Кнопки окна / fullscreen ─────────────────────────────────────────
-    def _toggle_max(self):
-        self.showNormal() if self.isMaximized() else self.showMaximized()
-
+    # ── Полноэкранный режим ──────────────────────────────────────────────
     def _toggle_fullscreen(self):
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
-
-    def changeEvent(self, e):
-        super().changeEvent(e)
-        if e.type() == QEvent.Type.WindowStateChange and hasattr(self, "btn_max"):
-            self.btn_max.setText(GLYPH_RESTORE if self.isMaximized() else GLYPH_MAX)
-            self.btn_max.setToolTip("Восстановить" if self.isMaximized() else "Развернуть")
+        self.apply_rounded_mask()
 
     # ── Сессия ───────────────────────────────────────────────────────────
     def _restore_session(self):
@@ -1445,20 +1474,24 @@ class SplashScreen(QWidget):
         self._prog.stop()
         self._progress = 1.0
         self.update()
+        self._win = win
         self._fade.stop()
-        self._fade.setDuration(380)
+        self._fade.setDuration(320)
         self._fade.setEasingCurve(QEasingCurve.Type.InCubic)
         self._fade.setStartValue(self.windowOpacity())
         self._fade.setEndValue(0.0)
-
-        def done():
-            if win is not None:
-                win.show()
-                win.raise_()
-                win.activateWindow()
-            self.close()
-        self._fade.finished.connect(done)
+        # КЛЮЧЕВОЕ: показываем окно в ЧИСТОМ слоте событийного цикла,
+        # а не внутри колбэка finished анимации (иначе reentrancy → краш QtCore).
+        self._fade.finished.connect(lambda: QTimer.singleShot(0, self._reveal))
         self._fade.start()
+
+    def _reveal(self):
+        if self._win is not None:
+            self._win.show()
+            self._win.apply_rounded_mask()
+            self._win.raise_()
+            self._win.activateWindow()
+        self.close()
 
     def paintEvent(self, e):
         p = QPainter(self)
@@ -1510,6 +1543,9 @@ class SplashScreen(QWidget):
         p.end()
 
 
+SINGLE_KEY = "PhantomBrowserSingletonV3"
+
+
 def main():
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
@@ -1517,11 +1553,48 @@ def main():
     app.setOrganizationName("PhantomLabs")
     app.setStyleSheet(QSS)
 
+    # ── ЕДИНСТВЕННЫЙ ЭКЗЕМПЛЯР (как Chrome): второй запуск не плодит копию,
+    #    а передаёт URL уже открытому окну. Это и чинит краш «двух копий».
+    probe = QLocalSocket()
+    probe.connectToServer(SINGLE_KEY)
+    if probe.waitForConnected(300):
+        arg = sys.argv[1] if len(sys.argv) > 1 else "RAISE"
+        probe.write(arg.encode("utf-8"))
+        probe.flush()
+        probe.waitForBytesWritten(500)
+        probe.disconnectFromServer()
+        return                       # выходим — окно уже есть
+    server = QLocalServer()
+    if not server.listen(SINGLE_KEY):
+        QLocalServer.removeServer(SINGLE_KEY)   # снять «висячий» сокет после краша
+        server.listen(SINGLE_KEY)
+
     splash = SplashScreen()
     splash.start()
     app.processEvents()          # отрисовать сплэш до тяжёлой инициализации WebEngine
 
     win = Browser()
+
+    def on_second():
+        c = server.nextPendingConnection()
+        data = ""
+        if c is not None and c.waitForReadyRead(300):
+            data = bytes(c.readAll()).decode("utf-8", "ignore").strip()
+
+        def handle():                # отложенно и безопасно — второй запуск не роняет первый
+            try:
+                if data and data != "RAISE":
+                    win.add_tab(data)
+                if win.isMinimized():
+                    win.showNormal()
+                win.raise_()
+                win.activateWindow()
+            except Exception:
+                pass
+        QTimer.singleShot(0, handle)
+    server.newConnection.connect(on_second)
+    win._single_server = server   # держим ссылку, чтобы сервер жил
+
     QTimer.singleShot(2200, lambda: splash.finish(win))
     sys.exit(app.exec())
 
