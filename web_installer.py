@@ -21,7 +21,7 @@ import urllib.request
 import tkinter as tk
 from tkinter import ttk
 
-DOWNLOAD_URL = "https://example.com/PhantomBrowserSetup.exe"   # <<< ВПИШИ СВОЮ ССЫЛКУ
+DOWNLOAD_URL = "https://github.com/NikMusy/PhantomBrowser/releases/download/v3.0/PhantomBrowserSetup.exe"
 
 
 class Installer:
