@@ -40,7 +40,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QVBoxLayout, QHBoxLayout,
     QPushButton, QLineEdit, QLabel, QStackedWidget, QTabBar, QProgressBar,
     QSizeGrip, QFileDialog, QMessageBox, QMenu, QSplitter, QTextBrowser,
-    QGraphicsDropShadowEffect,
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWebEngineCore import (
@@ -295,9 +295,30 @@ class WebView(QWebEngineView):
 
 
 class OmniBox(QLineEdit):
+    def __init__(self, *a):
+        super().__init__(*a)
+        self._eff = QGraphicsDropShadowEffect(self)
+        self._eff.setOffset(0, 0)
+        self._eff.setBlurRadius(0)
+        self._eff.setColor(QColor("#89B4FA"))
+        self.setGraphicsEffect(self._eff)
+        self._an = QPropertyAnimation(self._eff, b"blurRadius", self)
+        self._an.setDuration(240)
+        self._an.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def _glow(self, v):
+        self._an.stop()
+        self._an.setEndValue(float(v))
+        self._an.start()
+
     def focusInEvent(self, e):
         super().focusInEvent(e)
         QTimer.singleShot(0, self.selectAll)
+        self._glow(28)
+
+    def focusOutEvent(self, e):
+        super().focusOutEvent(e)
+        self._glow(0)
 
 
 class HoverGlow(QObject):
@@ -375,10 +396,25 @@ class FindBar(QFrame):
         self.show()
         self.inp.setFocus()
         self.inp.selectAll()
+        self._slide_to(46)
 
     def close_bar(self):
         self.browser.find_text("", True)
-        self.hide()
+        self._slide_to(0, hide=True)
+
+    def _slide_to(self, h, hide=False):
+        cur = self.maximumHeight()
+        if cur > 1000:
+            cur = self.height() if self.isVisible() else 0
+        a = QPropertyAnimation(self, b"maximumHeight", self)
+        a.setDuration(190)
+        a.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        a.setStartValue(int(cur))
+        a.setEndValue(int(h))
+        if hide:
+            a.finished.connect(self.hide)
+        self._slide = a
+        a.start()
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -1104,6 +1140,32 @@ class Browser(FramelessWindow):
             self.logo.setText("◆")
         self._rebuild_pages(self.active_profile)
         self.update_status()
+        self._pulse_logo()
+
+    def play_intro(self):
+        """Плавное появление окна при запуске."""
+        a = QPropertyAnimation(self, b"windowOpacity", self)
+        a.setDuration(360)
+        a.setStartValue(0.0)
+        a.setEndValue(1.0)
+        a.setEasingCurve(QEasingCurve.Type.OutCubic)
+        a.start()
+        self._intro = a
+        QTimer.singleShot(560, lambda: self.setWindowOpacity(1.0))   # страховка видимости
+
+    def _pulse_logo(self):
+        """Пульс логотипа при смене режима."""
+        eff = self.logo.graphicsEffect()
+        if not isinstance(eff, QGraphicsOpacityEffect):
+            eff = QGraphicsOpacityEffect(self.logo)
+            self.logo.setGraphicsEffect(eff)
+        a = QPropertyAnimation(eff, b"opacity", self)
+        a.setDuration(440)
+        a.setKeyValueAt(0.0, 1.0)
+        a.setKeyValueAt(0.5, 0.15)
+        a.setKeyValueAt(1.0, 1.0)
+        self._logo_pulse = a
+        a.start()
 
     def _rebuild_pages(self, profile):
         for i in range(self.stack.count()):
@@ -1239,28 +1301,60 @@ START_PAGE = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Phantom · New Tab</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif;}
-  body{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
-       gap:26px;background:radial-gradient(1200px 600px at 50% -10%,#313244 0%,#1E1E2E 55%,#11111B 100%);
-       color:#CDD6F4;overflow:hidden;}
-  .logo{font-size:64px;font-weight:800;letter-spacing:6px;
-        background:linear-gradient(135deg,#89B4FA,#CBA6F7 60%,#A6E3A1);
+  html,body{height:100%;}
+  body{position:relative;min-height:100vh;display:flex;flex-direction:column;align-items:center;
+       justify-content:center;gap:22px;background:#11111B;color:#CDD6F4;overflow:hidden;}
+  /* анимированный фон-аврора + плавающие орбы */
+  .bg{position:fixed;inset:0;z-index:-2;
+       background:radial-gradient(900px 520px at 50% -8%,#313244 0%,#1E1E2E 55%,#11111B 100%);}
+  .orb{position:fixed;border-radius:50%;filter:blur(72px);opacity:.5;z-index:-1;will-change:transform;
+       animation:drift 18s ease-in-out infinite;}
+  .orb.a{width:440px;height:440px;background:#89B4FA;left:-90px;top:-70px;}
+  .orb.b{width:400px;height:400px;background:#CBA6F7;right:-110px;top:8%;animation-delay:-6s;}
+  .orb.c{width:360px;height:360px;background:#A6E3A1;left:24%;bottom:-140px;animation-delay:-11s;opacity:.4;}
+  @keyframes drift{0%,100%{transform:translate(0,0) scale(1);}
+    33%{transform:translate(46px,34px) scale(1.1);}66%{transform:translate(-34px,22px) scale(.95);}}
+  .clock{font-size:14px;color:#6C7086;letter-spacing:3px;opacity:0;animation:fadeUp .6s .05s forwards;}
+  .logo{font-size:68px;font-weight:800;letter-spacing:8px;
+        background:linear-gradient(100deg,#89B4FA,#CBA6F7,#A6E3A1,#89B4FA);background-size:300% 100%;
         -webkit-background-clip:text;background-clip:text;color:transparent;
-        text-shadow:0 0 60px rgba(137,180,250,.25);}
-  .sub{color:#A6ADC8;font-size:15px;margin-top:-12px;}
-  form.search{width:min(620px,80vw);position:relative;}
-  form.search input{width:100%;padding:16px 22px;border-radius:26px;border:2px solid #313244;
-        background:#181825;color:#CDD6F4;font-size:16px;outline:none;transition:all .15s;}
-  form.search input:focus{border-color:#89B4FA;background:#11111B;box-shadow:0 8px 30px rgba(137,180,250,.18);}
-  form.search .ph{position:absolute;right:18px;top:13px;color:#6C7086;font-size:13px;}
-  .grid{display:grid;grid-template-columns:repeat(4,118px);gap:14px;}
-  a.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;height:88px;
-        border-radius:16px;text-decoration:none;color:#CDD6F4;background:rgba(49,50,68,.55);
-        border:1px solid rgba(69,71,90,.7);transition:all .18s ease;font-size:12px;font-weight:600;}
-  a.tile:hover{transform:translateY(-4px);border-color:#89B4FA;background:rgba(69,71,90,.85);
-        box-shadow:0 12px 30px rgba(0,0,0,.4);}
-  .tile .ico{font-size:28px;}
-  .foot{position:fixed;bottom:20px;color:#45475A;font-size:12px;}
+        filter:drop-shadow(0 0 42px rgba(137,180,250,.32));
+        animation:shimmer 7s linear infinite,floaty 5s ease-in-out infinite,popIn .8s cubic-bezier(.2,.9,.3,1.4) both;}
+  @keyframes shimmer{to{background-position:300% 0;}}
+  @keyframes floaty{0%,100%{transform:translateY(0);}50%{transform:translateY(-10px);}}
+  @keyframes popIn{from{opacity:0;transform:scale(.8);}to{opacity:1;}}
+  .sub{color:#A6ADC8;font-size:15px;margin-top:-10px;opacity:0;animation:fadeUp .7s .15s forwards;}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+  form.search{width:min(650px,82vw);position:relative;opacity:0;animation:fadeUp .7s .25s forwards;}
+  form.search::before{content:"";position:absolute;inset:-2px;border-radius:30px;z-index:-1;filter:blur(15px);
+        background:linear-gradient(120deg,#89B4FA,#CBA6F7,#A6E3A1);animation:breathe 4s ease-in-out infinite;}
+  @keyframes breathe{0%,100%{opacity:.22;}50%{opacity:.5;}}
+  form.search input{width:100%;padding:18px 22px;border-radius:28px;border:2px solid #313244;background:#181825;
+        color:#CDD6F4;font-size:16px;outline:none;
+        transition:border-color .25s,background .25s,transform .25s,box-shadow .25s;}
+  form.search input:focus{border-color:#89B4FA;background:#11111B;transform:scale(1.025);
+        box-shadow:0 14px 44px rgba(137,180,250,.30);}
+  form.search:focus-within::before{animation:none;opacity:.75;}
+  .ph{position:absolute;right:18px;top:16px;color:#585B70;font-size:12px;pointer-events:none;}
+  .grid{display:grid;grid-template-columns:repeat(4,122px);gap:14px;}
+  a.tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;height:92px;
+        border-radius:18px;text-decoration:none;color:#CDD6F4;background:rgba(49,50,68,.5);
+        border:1px solid rgba(69,71,90,.6);backdrop-filter:blur(6px);font-size:12px;font-weight:600;
+        opacity:0;transform:translateY(20px);animation:fadeUp .6s forwards;
+        transition:transform .22s cubic-bezier(.2,.9,.3,1.3),border-color .22s,background .22s,box-shadow .22s;}
+  .grid a:nth-child(1){animation-delay:.34s;}.grid a:nth-child(2){animation-delay:.40s;}
+  .grid a:nth-child(3){animation-delay:.46s;}.grid a:nth-child(4){animation-delay:.52s;}
+  .grid a:nth-child(5){animation-delay:.58s;}.grid a:nth-child(6){animation-delay:.64s;}
+  .grid a:nth-child(7){animation-delay:.70s;}.grid a:nth-child(8){animation-delay:.76s;}
+  a.tile:hover{transform:translateY(-7px) scale(1.06);border-color:#89B4FA;background:rgba(69,71,90,.88);
+        box-shadow:0 16px 38px rgba(0,0,0,.45),0 0 24px rgba(137,180,250,.28);}
+  a.tile .ico{font-size:28px;transition:transform .22s cubic-bezier(.2,.9,.3,1.5);}
+  a.tile:hover .ico{transform:scale(1.28) translateY(-3px);}
+  .foot{position:fixed;bottom:18px;color:#45475A;font-size:12px;opacity:0;animation:fadeUp 1s .85s forwards;}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
 </style></head><body>
+  <div class="bg"></div><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div>
+  <div class="clock" id="clock"></div>
   <div class="logo">PHANTOM</div>
   <div class="sub">Браузер нового поколения · Privacy-first · AI-native</div>
   <form class="search" action="__ACTION__" method="get" autocomplete="off">
@@ -1277,7 +1371,12 @@ START_PAGE = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
     <a class="tile" href="https://www.reddit.com"><span class="ico">👽</span>Reddit</a>
     <a class="tile" href="https://t.me"><span class="ico">✈️</span>Telegram</a>
   </div>
-  <div class="foot">⚡ Powered by PyQt6 · QtWebEngine (Chromium)</div>
+  <div class="foot">⚡ Powered by PyQt6 · QtWebEngine</div>
+  <script>
+    function tick(){var d=new Date(),h=d.getHours(),m=d.getMinutes();
+      document.getElementById('clock').textContent=(h<10?'0':'')+h+':'+(m<10?'0':'')+m;}
+    tick();setInterval(tick,1000);
+  </script>
 </body></html>""".replace("__ACTION__", SEARCH_FORM_ACTION).replace("__NAME__", SEARCH_NAME)
 
 HISTORY_HEAD = """<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><title>История</title>
@@ -1487,10 +1586,12 @@ class SplashScreen(QWidget):
 
     def _reveal(self):
         if self._win is not None:
+            self._win.setWindowOpacity(0.0)      # без вспышки: прозрачно → fade-in
             self._win.show()
             self._win.apply_rounded_mask()
             self._win.raise_()
             self._win.activateWindow()
+            self._win.play_intro()
         self.close()
 
     def paintEvent(self, e):
