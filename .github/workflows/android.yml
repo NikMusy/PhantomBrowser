@@ -53,7 +53,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        id: build
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log
 
       - name: Collect APK
         run: |
@@ -88,9 +91,28 @@ jobs:
               echo "**Скачать:** этот прогон → раздел **Artifacts** → \`PhantomBrowser-apk\`"
               echo "(внутри zip — \`PhantomBrowser.apk\`, debug-подпись, Android 7.0+)."
             else
-              echo "❌ Build failed — смотри логи выше."
+              echo "❌ **Build failed.** Ниже — извлечённые ошибки из лога Gradle:"
+              echo ""
+              echo '```'
+              if [ -f /tmp/gradle.log ]; then
+                grep -iE "error:|e: |FAILED|what went wrong|AAPT|Caused by|Unresolved|Execution failed|> Task" /tmp/gradle.log \
+                  | head -n 60 || true
+                echo "----- tail -----"
+                tail -n 40 /tmp/gradle.log
+              else
+                echo "(нет /tmp/gradle.log)"
+              fi
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full Gradle log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradle-log
+          path: /tmp/gradle.log
+          if-no-files-found: warn
 
       # ── Publish to a rolling pre-release ──────────────────────────────
       # Publishes the freshly-built APK as an asset on a dedicated
