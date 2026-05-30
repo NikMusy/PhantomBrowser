@@ -2,19 +2,16 @@ name: Build Phantom APK
 
 # Builds the Android edition (android/) into an installable APK.
 #
-#  • Any branch push        → APK uploaded as a workflow artifact.
-#  • Pushing a tag "v*"     → APK built AND published to a GitHub Release
-#                             named after the tag (PhantomBrowser.apk attached).
-#  • Publishing a Release   → APK attached to it (when the workflow is on the
-#                             default branch).
+#  • Any branch push   → APK uploaded as a workflow artifact, and (on the
+#                        dev branch) published to the "android-latest"
+#                        pre-release for a stable direct download link.
+#  • Manual dispatch   → same.
 #
-# Tag-triggered runs use the workflow file from the tag's own commit, so a
-# release can be cut straight from a feature branch without merging to main.
+# This never touches the official versioned releases (e.g. v3.0).
 
 on:
   push:
     branches: [ "**" ]
-    tags: [ "v*" ]
   workflow_dispatch:
   release:
     types: [ created ]
@@ -95,17 +92,22 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # ── Publish to a GitHub Release ───────────────────────────────────
-      # Fires on a "v*" tag push (creates/updates the release) or when a
-      # release is published manually.
-      - name: Publish APK to Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+      # ── Publish to a rolling pre-release ──────────────────────────────
+      # Publishes the freshly-built APK as an asset on a dedicated
+      # "android-latest" pre-release. This is separate from the official
+      # versioned releases (e.g. v3.0 with the Windows installer), which it
+      # never touches. Gives a stable, direct download URL for the APK.
+      - name: Publish APK to android-latest pre-release
+        if: github.ref_name == 'claude/apk-repository-integration-yqvws' || startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
-          name: Phantom Browser ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+          tag_name: android-latest
+          name: 👻 Phantom Browser — Android (latest)
+          prerelease: true
           body: |
             👻 **Phantom Browser для Android** — нативное приложение (Kotlin + WebView).
+
+            Автоматическая сборка из ветки разработки. Обновляется при каждом пуше.
 
             ### Установка
             1. Скачай **PhantomBrowser.apk** ниже.
