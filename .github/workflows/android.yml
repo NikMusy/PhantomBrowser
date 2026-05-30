@@ -1,16 +1,20 @@
 name: Build Phantom APK
 
 # Builds the Android edition (android/) into an installable APK.
-# The APK is uploaded as a workflow artifact you can download from the
-# Actions run page, and — when you publish a GitHub Release — attached
-# to that release as PhantomBrowser.apk.
+#
+#  • Any branch push        → APK uploaded as a workflow artifact.
+#  • Pushing a tag "v*"     → APK built AND published to a GitHub Release
+#                             named after the tag (PhantomBrowser.apk attached).
+#  • Publishing a Release   → APK attached to it (when the workflow is on the
+#                             default branch).
+#
+# Tag-triggered runs use the workflow file from the tag's own commit, so a
+# release can be cut straight from a feature branch without merging to main.
 
 on:
   push:
     branches: [ "**" ]
-    paths:
-      - "android/**"
-      - ".github/workflows/android.yml"
+    tags: [ "v*" ]
   workflow_dispatch:
   release:
     types: [ created ]
@@ -20,7 +24,7 @@ permissions:
 
 jobs:
   build:
-    name: Assemble debug APK
+    name: Assemble & publish APK
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -55,7 +59,6 @@ jobs:
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Collect APK
-        id: collect
         run: |
           set -e
           mkdir -p out
@@ -85,15 +88,31 @@ jobs:
             if [ -f out/PhantomBrowser.apk ]; then
               echo "✅ **Build succeeded.**"
               echo ""
-              echo "**Скачать:** открой эту страницу прогона → раздел **Artifacts** → \`PhantomBrowser-apk\`."
-              echo "Внутри zip — \`PhantomBrowser.apk\` (debug-подпись, Android 7.0+)."
+              echo "**Скачать:** этот прогон → раздел **Artifacts** → \`PhantomBrowser-apk\`"
+              echo "(внутри zip — \`PhantomBrowser.apk\`, debug-подпись, Android 7.0+)."
             else
-              echo "❌ Build failed — see the logs above."
+              echo "❌ Build failed — смотри логи выше."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Attach APK to release
-        if: github.event_name == 'release'
+      # ── Publish to a GitHub Release ───────────────────────────────────
+      # Fires on a "v*" tag push (creates/updates the release) or when a
+      # release is published manually.
+      - name: Publish APK to Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+          name: Phantom Browser ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref_name }}
+          body: |
+            👻 **Phantom Browser для Android** — нативное приложение (Kotlin + WebView).
+
+            ### Установка
+            1. Скачай **PhantomBrowser.apk** ниже.
+            2. На телефоне разреши установку из неизвестных источников.
+            3. Открой файл — готово.
+
+            Тёмная тема Catppuccin · своя поисковая система Phantom Search · вкладки · Ghost Mode 🌙
+            Требуется Android 7.0+ (API 24). APK подписан debug-ключом.
           files: android/out/PhantomBrowser.apk
+          fail_on_unmatched_files: true
