@@ -10,6 +10,13 @@ __pycache__/
 *.log
 _*.py
 
+# Генерируемые баннеры мастера установки (создаются make_icon.py при сборке)
+wizard_large.bmp
+wizard_small.bmp
+
+# Артефакты CI-сборки APK
+android/dist/
+
 # Данные профиля/IDE
 .vscode/
 .idea/

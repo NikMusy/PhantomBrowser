@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/menu_new_tab" android:title="@string/new_tab" />
+    <item android:id="@+id/menu_home" android:title="@string/action_home" />
+    <item android:id="@+id/menu_share" android:title="@string/action_share" />
+    <item android:id="@+id/menu_ghost" android:title="@string/action_ghost" android:checkable="true" />
+    <item android:id="@+id/menu_desktop" android:title="@string/action_desktop" android:checkable="true" />
+    <item android:id="@+id/menu_about" android:title="О Phantom" />
+</menu>

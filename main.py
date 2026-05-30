@@ -22,6 +22,7 @@ import re
 import os
 import json
 import time
+import socket
 import ctypes
 import urllib.request
 import urllib.error
@@ -193,6 +194,21 @@ class FramelessWindow(QMainWindow):
 # ─────────────────────────────────────────────────────────────────────────
 
 TOR_HOST, TOR_PORT = "127.0.0.1", 9050
+# Tor demon слушает 9050, Tor Browser — 9150. Пробуем оба.
+TOR_PORTS = (9050, 9150)
+
+
+def find_tor_port(host=TOR_HOST, ports=TOR_PORTS, timeout=0.4):
+    """Возвращает порт, на котором реально слушает Tor SOCKS5, или None.
+    Без этой проверки включение Ghost Mode при выключенном Tor роняет
+    весь интернет в браузере (трафик уходит в мёртвый прокси)."""
+    for port in ports:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return port
+        except OSError:
+            continue
+    return None
 TOR_UA = "Mozilla/5.0 (Windows NT 10.0; rv:115.0) Gecko/20100101 Firefox/115.0"
 NORMAL_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
              "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -1126,7 +1142,30 @@ class Browser(FramelessWindow):
     # ── GHOST MODE ───────────────────────────────────────────────────────
     def toggle_ghost(self, on: bool):
         if on:
-            proxy = QNetworkProxy(QNetworkProxy.ProxyType.Socks5Proxy, TOR_HOST, TOR_PORT)
+            # Сначала убеждаемся, что Tor реально запущен и слушает порт.
+            # Иначе весь трафик уйдёт в мёртвый SOCKS5 и интернет в браузере
+            # просто отвалится. Проверяем 9050 (демон) и 9150 (Tor Browser).
+            port = find_tor_port()
+            if port is None:
+                self.ghost_btn.blockSignals(True)
+                self.ghost_btn.setChecked(False)
+                self.ghost_btn.blockSignals(False)
+                box = QMessageBox(self)
+                box.setIcon(QMessageBox.Icon.Warning)
+                box.setWindowTitle("Tor не найден")
+                box.setText("🧅  Ghost Mode не включён — Tor не запущен.")
+                box.setInformativeText(
+                    "Не удалось подключиться к Tor SOCKS5 на 127.0.0.1:9050 или :9150.\n\n"
+                    "Запусти Tor и попробуй снова:\n"
+                    "  • Tor Browser — открой его (слушает порт 9150), либо\n"
+                    "  • демон tor — установи и запусти службу (порт 9050).\n\n"
+                    "Без Tor включать прокси нельзя: интернет в браузере отвалится."
+                )
+                box.exec()
+                return
+            global TOR_PORT
+            TOR_PORT = port
+            proxy = QNetworkProxy(QNetworkProxy.ProxyType.Socks5Proxy, TOR_HOST, port)
             proxy.setCapabilities(QNetworkProxy.Capability.HostNameLookupCapability
                                   | QNetworkProxy.Capability.TunnelingCapability)
             QNetworkProxy.setApplicationProxy(proxy)
