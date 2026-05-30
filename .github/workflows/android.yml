@@ -114,6 +114,26 @@ jobs:
           path: /tmp/gradle.log
           if-no-files-found: warn
 
+      # On failure, commit the error log back to the branch so it can be
+      # inspected via git (Actions log API is not reachable from the dev env).
+      - name: Commit build log on failure
+        if: failure()
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p android/_ci
+          {
+            echo "Build of $GITHUB_SHA failed at $(date -u)"
+            echo "=================== ERROR LINES ==================="
+            grep -iE "error:|e: |FAILED|what went wrong|AAPT|Caused by|Unresolved|Execution failed|> Task" /tmp/gradle.log | head -n 80 || true
+            echo "=================== TAIL (last 80) ==================="
+            tail -n 80 /tmp/gradle.log || true
+          } > android/_ci/last_build_error.log
+          git config user.name "phantom-ci"
+          git config user.email "ci@phantom.local"
+          git add android/_ci/last_build_error.log
+          git commit -m "ci: build error log for $GITHUB_SHA [skip ci]" || exit 0
+          git push origin HEAD:${GITHUB_REF_NAME}
+
       # ── Publish to a rolling pre-release ──────────────────────────────
       # Publishes the freshly-built APK as an asset on a dedicated
       # "android-latest" pre-release. This is separate from the official
