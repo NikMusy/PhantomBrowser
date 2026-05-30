@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Catppuccin Mocha palette — same vibe as the desktop Phantom Browser. -->
+<resources>
+    <color name="ctp_base">#1E1E2E</color>
+    <color name="ctp_mantle">#181825</color>
+    <color name="ctp_crust">#11111B</color>
+    <color name="ctp_surface0">#313244</color>
+    <color name="ctp_surface1">#45475A</color>
+    <color name="ctp_surface2">#585B70</color>
+    <color name="ctp_overlay0">#6C7086</color>
+    <color name="ctp_text">#CDD6F4</color>
+    <color name="ctp_subtext">#A6ADC8</color>
+    <color name="ctp_mauve">#CBA6F7</color>
+    <color name="ctp_lavender">#B4BEFE</color>
+    <color name="ctp_blue">#89B4FA</color>
+    <color name="ctp_sapphire">#74C7EC</color>
+    <color name="ctp_green">#A6E3A1</color>
+    <color name="ctp_red">#F38BA8</color>
+    <color name="ctp_peach">#FAB387</color>
+    <color name="ctp_yellow">#F9E2AF</color>
+
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

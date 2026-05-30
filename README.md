@@ -23,7 +23,40 @@ AI-ассистент (как в Comet), режим анонимности че�
 
 ---
 
-## 🚀 Запуск из исходников
+## 📱 Phantom для Android (APK)
+
+Теперь Phantom есть и на телефоне — нативное Android-приложение на **Kotlin + WebView**
+с той же стилистикой: тёмная тема Catppuccin, своя поисковая система **Phantom Search**,
+вкладки, **Ghost Mode** (инкогнито), анимированный сплэш с логотипом-призраком и красивая
+стартовая страница с часами и плитками-ссылками.
+
+Исходники — в папке [`android/`](android/).
+
+### ⬇️ Скачать APK
+APK собирается автоматически в **GitHub Actions** (workflow «Build Phantom APK»):
+- При каждом пуше в `android/**` — артефакт **`PhantomBrowser-apk`** на вкладке
+  *Actions → последний прогон → Artifacts*.
+- При создании релиза APK прикрепляется к нему как `PhantomBrowser.apk`.
+
+### 🔨 Собрать APK самому
+```bash
+cd android
+./gradlew assembleDebug          # результат: app/build/outputs/apk/debug/app-debug.apk
+```
+Нужны JDK 17 и Android SDK (Android Studio подтянет всё сам — просто открой папку `android/`).
+
+### ✨ Что внутри Android-версии
+- **Phantom Search** — поиск из омнибокса и со стартовой страницы (бэкенд DuckDuckGo,
+  меняется одной строкой `SEARCH_QUERY_URL` в `android/.../PhantomApp.kt`).
+- **Вкладки** — нижняя панель + bottom-sheet переключатель вкладок.
+- **Ghost Mode** 🌙 — режим инкогнито: чистит куки, не пишет кэш, подсвечивает статус-бар.
+- **Версия для ПК** — переключение мобильного/десктопного User-Agent.
+- **Открытие ссылок** — Phantom можно выбрать браузером по умолчанию и «Поделиться → Phantom».
+- Пасхалка 🚀 `antigravity` работает и тут.
+
+---
+
+## 🚀 Запуск из исходников (десктоп)
 
 ```powershell
 pip install -r requirements.txt

@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">Phantom</string>
+    <string name="app_full_name">Phantom Browser</string>
+    <string name="tagline">убийца Chrome · теперь в кармане</string>
+
+    <string name="omnibox_hint">Поиск в Phantom или ввод адреса</string>
+    <string name="menu">Меню</string>
+    <string name="new_tab">Новая вкладка</string>
+    <string name="close_tab">Закрыть вкладку</string>
+    <string name="tabs">Вкладки</string>
+
+    <string name="action_back">Назад</string>
+    <string name="action_forward">Вперёд</string>
+    <string name="action_reload">Обновить</string>
+    <string name="action_share">Поделиться</string>
+    <string name="action_ghost">Ghost Mode</string>
+    <string name="action_desktop">Версия для ПК</string>
+    <string name="action_home">На главную</string>
+
+    <string name="ghost_on">🌙 Ghost Mode включён — история не пишется</string>
+    <string name="ghost_off">Ghost Mode выключен</string>
+</resources>

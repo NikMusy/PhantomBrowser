@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Theme.Phantom" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/ctp_mauve</item>
+        <item name="colorOnPrimary">@color/ctp_crust</item>
+        <item name="colorSecondary">@color/ctp_lavender</item>
+        <item name="colorBackground">@color/ctp_base</item>
+        <item name="android:colorBackground">@color/ctp_base</item>
+        <item name="colorSurface">@color/ctp_mantle</item>
+        <item name="colorOnSurface">@color/ctp_text</item>
+        <item name="android:statusBarColor">@color/ctp_crust</item>
+        <item name="android:navigationBarColor">@color/ctp_crust</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.Phantom.Splash" parent="Theme.Phantom">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>
