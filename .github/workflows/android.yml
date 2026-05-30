@@ -1,26 +1,26 @@
 name: Build Phantom APK
 
-# Builds the Android edition (android/) into an installable APK and commits
-# the result back into the branch under android/dist/ so it can be fetched
-# directly via git/raw — no release, no tag (tag/release creation is blocked
-# in some environments).
+# Builds the Android edition (android/) into a debug APK and uploads it as a
+# workflow artifact. Download it from the run page → Artifacts → PhantomBrowser-apk.
 
 on:
   push:
     branches: [ "**" ]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: apk-${{ github.ref }}
-  cancel-in-progress: true
+  contents: read
 
 jobs:
   build:
-    name: Assemble APK
+    name: Assemble debug APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
 
     steps:
       - name: Checkout
@@ -45,61 +45,14 @@ jobs:
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build debug APK
-        id: build
-        continue-on-error: true
-        working-directory: android
         run: |
-          set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle.log
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Stage APK or error log, then commit to branch
-        if: always()
-        run: |
-          set -e
-          rm -rf android/dist
-          mkdir -p android/dist
-          APK="$(find android/app/build/outputs/apk -name '*.apk' 2>/dev/null | head -n1 || true)"
-
-          if [ -n "$APK" ] && [ -f "$APK" ]; then
-            cp "$APK" android/dist/PhantomBrowser.apk
-            echo "BUILD OK $(date -u) — $(du -h android/dist/PhantomBrowser.apk | cut -f1)" > android/dist/STATUS.txt
-            rm -f android/dist/last_build_error.log
-          else
-            echo "BUILD FAILED $(date -u)" > android/dist/STATUS.txt
-            {
-              echo "Build of $GITHUB_SHA failed."
-              echo "=================== ERROR LINES ==================="
-              grep -iE "error:|e: |FAILED|what went wrong|AAPT|Caused by|Unresolved|Execution failed|> Task .*FAILED" /tmp/gradle.log | head -n 100 || true
-              echo "=================== TAIL (last 120) ==================="
-              tail -n 120 /tmp/gradle.log || true
-            } > android/dist/last_build_error.log
-            rm -f android/dist/PhantomBrowser.apk
-          fi
-
-          git config user.name "phantom-ci"
-          git config user.email "ci@phantom.local"
-          git add -f android/dist
-          git commit -m "ci: APK build result for ${GITHUB_SHA::7} [skip ci]" || { echo "nothing to commit"; exit 0; }
-          git push origin HEAD:"${GITHUB_REF_NAME}"
-
-      - name: Upload APK artifact
-        if: always()
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PhantomBrowser-apk
-          path: android/dist/PhantomBrowser.apk
-          if-no-files-found: warn
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
           retention-days: 90
-
-      - name: Upload full Gradle log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-log
-          path: /tmp/gradle.log
-          if-no-files-found: warn
-
-      - name: Fail job if no APK
-        if: always()
-        run: test -f android/dist/PhantomBrowser.apk

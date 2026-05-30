@@ -32,18 +32,19 @@ AI-ассистент (как в Comet), режим анонимности че�
 
 Исходники — в папке [`android/`](android/).
 
-### ⬇️ Скачать APK
-APK собирается автоматически в **GitHub Actions** (workflow «Build Phantom APK»):
-- При каждом пуше в `android/**` — артефакт **`PhantomBrowser-apk`** на вкладке
-  *Actions → последний прогон → Artifacts*.
-- При создании релиза APK прикрепляется к нему как `PhantomBrowser.apk`.
+### 🔨 Собрать APK
+Самый простой способ — **Android Studio**: открой папку `android/` и нажми
+*Build → Build APK(s)*. Всё (SDK, зависимости) подтянется автоматически.
 
-### 🔨 Собрать APK самому
+Из командной строки (нужны JDK 17 и Android SDK):
 ```bash
 cd android
 ./gradlew assembleDebug          # результат: app/build/outputs/apk/debug/app-debug.apk
 ```
-Нужны JDK 17 и Android SDK (Android Studio подтянет всё сам — просто открой папку `android/`).
+
+Либо через **GitHub Actions**: workflow «Build Phantom APK» собирает APK при каждом
+пуше в `android/**`. Готовый файл — на вкладке *Actions → последний прогон → Artifacts →
+`PhantomBrowser-apk`*.
 
 ### ✨ Что внутри Android-версии
 - **Phantom Search** — поиск из омнибокса и со стартовой страницы (бэкенд DuckDuckGo,

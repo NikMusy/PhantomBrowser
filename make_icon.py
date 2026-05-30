@@ -71,10 +71,62 @@ def png_bytes(img: QImage) -> bytes:
     return bytes(buf.data())
 
 
+def render_wizard(w: int, h: int) -> QImage:
+    """Баннер мастера установки: тёмный градиентный фон + крупный логотип-ромб
+    слева/по центру. Используется как WizardImageFile (164×314) и
+    WizardSmallImageFile (55×58) в Inno Setup."""
+    img = QImage(w, h, QImage.Format.Format_ARGB32)
+    img.fill(Qt.GlobalColor.transparent)
+    p = QPainter(img)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    # диагональный тёмный градиент фона
+    bg = QLinearGradient(0.0, 0.0, float(w), float(h))
+    bg.setColorAt(0.0, QColor("#11111B"))
+    bg.setColorAt(0.5, QColor("#181825"))
+    bg.setColorAt(1.0, QColor("#1E1E2E"))
+    p.fillRect(0, 0, w, h, QBrush(bg))
+
+    # тонкая акцентная диагональ
+    accent = QColor("#CBA6F7")
+    accent.setAlpha(28)
+    p.setPen(QPen(accent, max(1.0, w / 90.0)))
+    p.drawLine(0, int(h * 0.78), w, int(h * 0.30))
+
+    # логотип-ромб
+    logo = render(min(w, h) if h <= 80 else int(w * 0.74))
+    lx = (w - logo.width()) // 2
+    ly = int(h * 0.12) if h > 80 else (h - logo.height()) // 2
+    p.drawImage(lx, ly, logo)
+
+    # подпись на больших баннерах
+    if h > 80:
+        from PyQt6.QtGui import QFont
+        p.setPen(QColor("#CDD6F4"))
+        f = QFont("Segoe UI", max(9, int(w / 14)))
+        f.setBold(True)
+        p.setFont(f)
+        p.drawText(QRectF(0, h * 0.62, w, h * 0.12),
+                   int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
+                   "PHANTOM")
+        p.setPen(QColor("#6C7086"))
+        f2 = QFont("Segoe UI", max(7, int(w / 24)))
+        p.setFont(f2)
+        p.drawText(QRectF(0, h * 0.73, w, h * 0.1),
+                   int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter),
+                   "Privacy-first browser")
+    p.end()
+    return img
+
+
 def main():
     QGuiApplication(sys.argv)
     base = render(256)
     base.save(os.path.join(HERE, "app.png"), "PNG")
+
+    # Баннеры мастера установки (Inno Setup ждёт BMP).
+    render_wizard(164, 314).save(os.path.join(HERE, "wizard_large.bmp"), "BMP")
+    render_wizard(55, 58).save(os.path.join(HERE, "wizard_small.bmp"), "BMP")
 
     sizes = [16, 24, 32, 48, 64, 128, 256]
     blobs = []
@@ -95,7 +147,7 @@ def main():
         datas += data
     with open(os.path.join(HERE, "app.ico"), "wb") as f:
         f.write(header + entries + datas)
-    print("OK: app.ico + app.png созданы (PyQt6)")
+    print("OK: app.ico + app.png + wizard_large.bmp + wizard_small.bmp созданы (PyQt6)")
 
 
 if __name__ == "__main__":

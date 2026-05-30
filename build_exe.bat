@@ -2,8 +2,9 @@
 chcp 65001 >nul
 echo === Building Phantom Browser .exe (PyInstaller) ===
 
-REM Иконка (если нужно — пересоздать: python make_icon.py)
+REM Иконка + баннеры мастера (если нужно — пересоздать: python make_icon.py)
 if not exist app.ico python make_icon.py
+if not exist wizard_large.bmp python make_icon.py
 
 python -m pip install --upgrade pyinstaller >nul 2>&1
 if exist build rmdir /s /q build
