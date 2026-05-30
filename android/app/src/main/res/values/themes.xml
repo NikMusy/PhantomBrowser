@@ -5,7 +5,6 @@
         <item name="colorPrimary">@color/ctp_mauve</item>
         <item name="colorOnPrimary">@color/ctp_crust</item>
         <item name="colorSecondary">@color/ctp_lavender</item>
-        <item name="colorBackground">@color/ctp_base</item>
         <item name="android:colorBackground">@color/ctp_base</item>
         <item name="colorSurface">@color/ctp_mantle</item>
         <item name="colorOnSurface">@color/ctp_text</item>
