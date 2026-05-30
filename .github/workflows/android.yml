@@ -1,5 +1,10 @@
 name: Build Phantom APK
 
+# Builds the Android edition (android/) into an installable APK.
+# The APK is uploaded as a workflow artifact you can download from the
+# Actions run page, and — when you publish a GitHub Release — attached
+# to that release as PhantomBrowser.apk.
+
 on:
   push:
     branches: [ "**" ]
@@ -15,6 +20,7 @@ permissions:
 
 jobs:
   build:
+    name: Assemble debug APK
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -33,16 +39,34 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Rename artifact
+      - name: Collect APK
+        id: collect
         run: |
+          set -e
           mkdir -p out
-          cp app/build/outputs/apk/debug/app-debug.apk out/PhantomBrowser.apk
+          APK="$(find app/build/outputs/apk -name '*.apk' | head -n1)"
+          if [ -z "$APK" ]; then
+            echo "::error::No APK produced by the build"
+            exit 1
+          fi
+          cp "$APK" out/PhantomBrowser.apk
+          echo "Built: $APK ($(du -h out/PhantomBrowser.apk | cut -f1))"
+          ls -la out
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -50,6 +74,23 @@ jobs:
           name: PhantomBrowser-apk
           path: android/out/PhantomBrowser.apk
           if-no-files-found: error
+          retention-days: 90
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## 👻 Phantom Browser APK"
+            echo ""
+            if [ -f out/PhantomBrowser.apk ]; then
+              echo "✅ **Build succeeded.**"
+              echo ""
+              echo "**Скачать:** открой эту страницу прогона → раздел **Artifacts** → \`PhantomBrowser-apk\`."
+              echo "Внутри zip — \`PhantomBrowser.apk\` (debug-подпись, Android 7.0+)."
+            else
+              echo "❌ Build failed — see the logs above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Attach APK to release
         if: github.event_name == 'release'
